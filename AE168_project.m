@@ -1,5 +1,6 @@
 %% AE 168 Project
  % Team HALO minus Alexis
+ % 12/13/2017
 
 clear all
 close all
