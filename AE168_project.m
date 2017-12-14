@@ -1,6 +1,5 @@
 %% AE 168 Project
  % Team HALO minus Alexis
- % 12/13/2017
 
 clear all
 close all
@@ -21,16 +20,16 @@ x_cm = -.3880;   % LE to CM in ft
 x_Wac = 0.8929;  % LE to .25c wing ft
 
 % Basic Aircraft Data
-rho = 0.0001705; % Density slugs/ft^3
-U_1 = 170;       % True airspeed ft/sec
-e = 0.80;        % Oswald's efficiency 
-C_D0 = 0.003392; % Zero lift drag
-c_la = 5.73;     % 2D wing lift curve slope rad^-1
-eta_h = 1;       % Dynamic pressure ratio - No tail
-tau = 0.125;     % Elevator effectiveness 
-g = 32.2;        % Standard gravity ft/sec^2
-M = 0.176;       % Mach number
-alpha0 = -13.2;  % Zero lift AOA deg 
+rho = 0.0001705;  % Density slugs/ft^3
+U_1 = 170;        % True airspeed ft/sec
+e = 0.80;         % Oswald's efficiency 
+C_D0 = 0.003392;  % Zero lift drag
+c_la = 5.73;      % 2D wing lift curve slope rad^-1
+eta_h = 1;        % Dynamic pressure ratio - No tail
+tau_elev = 0.125; % Elevator effectiveness 
+g = 32.2;         % Standard gravity ft/sec^2
+M = 0.176;        % Mach number
+alpha0 = -13.2;   % Zero lift AOA deg 
 
 %% Calculating constants
 
@@ -55,7 +54,7 @@ C_LAW = 2*pi*AR_W/(2+(((AR_W^2*beta^2)/kappa^2)*(1+(((tan_sweep_50)^2)/beta^2))+
 C_Ma = C_LAW*((x_cm/c_barW)-(x_Wac/c_barW));
 
 % Pitch Damping due to elevator deflection
-C_Mde = -(S/S)*eta_h*((x_Wac/c_barW)-(x_cm/c_barW))*C_LAW*tau;
+C_Mde = -(S/S)*eta_h*((x_Wac/c_barW)-(x_cm/c_barW))*C_LAW*tau_elev;
 
 % Lift Coefficient of entire A/C
 C_L1 = W/(q_bar*S);
@@ -77,7 +76,7 @@ C_L0 = C_LA*(-alpha0)*pi/180;
 C_LU = M^2*C_L0/(1-M^2); 
 
 % Lift coefficient variation with elevator deflection
-C_Lde = C_LAW*eta_h*(S/S)*tau;
+C_Lde = C_LAW*eta_h*(S/S)*tau_elev;
 
 % Pitch Damping due to pitch rate
 l_W = x_Wac-x_cm;
@@ -143,12 +142,14 @@ y1 = 23.414;
 y2 = 32.885;
 
 %                           Lateral Coefficients
+
 % Roll Moment Coefficient due to Aileron Deflection
-C_roll_delA = (2*C_LAW*tau/(S*b))*c_root*((y2^2-y1^2)/2 - (2/3)*((1-taper)/b)*(y2^3 - y1^3));
+C_roll_delA = (2*C_LAW*tau_elev/(S*b))*c_root*((y2^2-y1^2)/2 - (2/3)*((1-taper)/b)*(y2^3 - y1^3));
 % Roll Damping Moment Coefficient
 C_roll_p = -(4*C_LAW/(S*b^2))*(1/8)*c_root*(b^3)*((1/3) - (1/4)*(1-taper));
 
 %                           Lateral Moments
+
 % Roll Moment due to Aileron Deflection
 L_delA = q_bar*S*b*C_roll_delA/I_x;
 % Roll Moment due to Roll Rate
@@ -160,29 +161,156 @@ roll_rate = L_delA/(s - L_p);
 % Transfer Function for Bank Angle due to Aileron Defleciton
 bank_angle = roll_rate/s;
 
+%% System Variables
+
+SimTime = 15; % seconds
+stepSize = 0.001; % step size
+t = 0:stepSize:SimTime; % time vector
+theta_cmd = 10;
+
 %% Servo Actuator Transfer Function
 
+tau = 0.1; % time constant
+servo = 1/(tau*s + 1); % elevon servo gain
 
+%% Pitch Attitude ATTEMPT 1
 
+%% Pitch Attitude Open Loop Root Locus
 
+% Using Phugoid Approximation
+figure
+% step(servo*pitch_att,t)
+rlocus(-servo*pitch_att)
 
-%% Simulink
+% Using Short Period Approximation
+figure
+pitch_att_OL = servo*(-pitch_rate)*(1/s);
+rlocus(pitch_att_OL)
 
-SimTime = 200; % seconds
-stepSize = 0.1; % step size
-t = 0:stepSize:SimTime; % time vector
+% Pitch Attitude Root Locus Analysis
+ % Analyze Short Period Pitch Attitude Root Locus HERE
 
-[pitch_num,pitch_den] = tfdata(pitch_att,'v');
-
-sim('pitch_attitude')
+%% Pitch Attitude Closed Loop Feedback (w/o Closed Loop Pitch Damping)
+K_theta = 17;
+pitch_att_CL = feedback(servo*(-pitch_rate)*(1/s)*K_theta,1);
 
 figure
-plot(pitch_att_sim(:,1),pitch_att_sim(:,2))
-legend('show')
+step(pitch_att_CL,t)
+
+% Pitch Attitude Closed Loop Analysis (w/o pitch rate)
+ % Analyze Short Period Pitch Attitude Closed Loop HERE
+ 
+%% Pitch Attitude ATTEMPT 2a
+
+%% Pitch Rate Open Loop Root Locus
+
+figure
+rlocus(-pitch_rate*servo)
+
+% Pitch Rate Root Locus Analysis
+ % Analyze Short Period Pitch Rate Root Locus HERE
+
+ % K_thetadot gains can range from 6.47 to 11.2
+%% Pitch Damping Closed Loop Feedback
+
+K_thetadot = 6.5;
+pitch_rate_CL = feedback(servo*(-pitch_rate),K_thetadot);
+
+figure
+rlocus(pitch_rate_CL*(1/s))
+
+% Pitch Damping Closed Loop Analysis
+ % Write Analysis
+
+ % K_thetadot = 6.47, root locus crosses imaginary axis at K_theta =~123
+ % K_thetadot = 11.2, root locus crosses imaginary axis at K_theta =~ 149 
+    % also no damping from 0 to 8.14
+%% Pitch Attitude Closed Loop (w/ Pitch Damping) in Simulink
+K_theta_damping = 20;
+[q_num,q_den] = tfdata(-pitch_rate,'v');
+sim('pitch_attitude_SP')
+
+figure
+plot(pitch_att_damp_sim(:,1),pitch_att_damp_sim(:,2))
+legend('Simulink Pitch Attitude')
 xlabel('Time (seconds)')
-ylabel('Amplitude')
-title('Step Response')
+ylabel('Pitch Attitude')
+title('Pitch Attitude Closed Loop w/ Pitch Damping Step Response')
+
+%% Pitch Attitude Attempt 2b
 
 %%
+clc
+close all
+figure
+plot([0 SimTime],[theta_cmd theta_cmd],'r')
+legend_text = {'ref'};
+%% PID Tuning
+
+% Ziegler-Nichols Method Attempt
+% Ku = 130;
+% Tu = 1.25;
+% Kp = 0.7*Ku;
+% Ki = Tu/2.5;
+% Kd = 3*Tu/20;
+
+% Manual Tuning
+Kp = 100;
+Ki = 25;
+Kd = 20;
+
+%% Pitch Attitude with PID Tuner
+
+sim('pitch_attitude_SP_with_PID')
+hold on
+plot(pitch_PID_sim(:,1),pitch_PID_sim(:,2))
+legend_text = [legend_text {['Kp ' num2str(Kp) '  Ki ' num2str(Ki) '  Kd ' num2str(Kd)]}];
+legend(legend_text)
+
+%% ROLL
+
+%% Roll Rate Open Loop Root Locus
+
+figure
+rlocus(roll_rate*servo)
+
+% Roll Rate Root Locus Analysis
+ % Analyze Short Period Pitch Rate Root Locus HERE
+
+ % K_thetadot gains can range from 0 to 0.0393
+%% Roll Damping Closed Loop Feedback
+
+K_phidot = 0.0393;
+roll_rate_CL = feedback(servo*(roll_rate),K_phidot);
+
+figure
+rlocus(roll_rate_CL*(1/s))
+
+% Roll Damping Closed Loop Analysis
+ % Write Analysis
+
+ % K_phidot = 0.0393, root locus crosses imaginary axis at K_phi =~1.45
+ % No damping from 0 to 0.116
+
+%% Bank Angle with PID Tuner
+
+K_phi = 0.116;
+phi_disturb = 10;
+[r_num,r_den] = tfdata(roll_rate,'v');
+sim('bank_angle_w_damping')
+
+figure
+plot(bank_angle_sim(:,1),bank_angle_sim(:,2))
+legend('Bank Angle from Simulink')
+xlabel('Time (seconds)')
+ylabel('Bank Angle')
+title('Bank Angle Closed Loop w/ Roll Damping Step Response')
+% axis([0 SimTime -2 phi_disturb*2])
+
+
+
+
+
+
 
 
